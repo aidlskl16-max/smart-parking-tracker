@@ -1,0 +1,61 @@
+# ============================================================
+#  Smart Parking License Plate Tracker – Docker Compose
+#  3 שירותים:  web (Nginx)  →  api (Node.js)  →  redis (DB)
+#  הפעלה:  docker compose up -d --build
+#  כניסה:  http://localhost:8080
+# ============================================================
+services:
+
+  # ---------- שרת ה-Web: מגיש את לוח הבקרה ----------
+  web:
+    build: ./web
+    container_name: parking-web
+    ports:
+      - "8080:80"            # פורט 8080 במחשב → פורט 80 בקונטיינר
+    depends_on:
+      - api
+    networks:
+      - parking-net
+    restart: unless-stopped
+
+  # ---------- שרת ה-API: מקבל נתונים מהמצלמה ומחזיר ללוח הבקרה ----------
+  api:
+    build: ./api
+    container_name: parking-api
+    environment:
+      - REDIS_HOST=redis     # שם השירות של Redis (DNS פנימי של Docker)
+      - CAPACITY=10          # כמה מקומות חניה יש
+      - PRICE_PER_HOUR=12    # ₪ לכל שעה שהתחילה
+    depends_on:
+      redis:
+        condition: service_healthy   # מחכים ש-Redis באמת מוכן, לא רק "עלה"
+    networks:
+      - parking-net
+    restart: unless-stopped
+    # שימו לב: אין כאן ports – ה-API לא חשוף החוצה, רק Nginx מדבר איתו (אבטחה)
+
+  # ---------- מסד הנתונים Redis ----------
+  redis:
+    image: redis:7-alpine
+    container_name: parking-redis
+    # appendonly yes = כל שינוי נכתב לקובץ בדיסק, כך שהנתונים שורדים נפילה
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data     # התיקייה שבה Redis שומר את הקבצים – יושבת ב-Volume
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - parking-net
+    restart: unless-stopped
+
+# רשת Custom Bridge – השירותים מוצאים אחד את השני לפי שם
+networks:
+  parking-net:
+    driver: bridge
+
+# Volume בניהול Docker – לא נמחק ב-"docker compose down"
+volumes:
+  redis_data:
