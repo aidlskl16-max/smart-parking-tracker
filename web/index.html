@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SmartPark – לוח בקרה</title>
+  <style>
+    :root {
+      --bg: #f3f5f9;
+      --card: #ffffff;
+      --text: #1d2433;
+      --muted: #6b7385;
+      --border: #e2e6ee;
+      --accent: #2563eb;
+      --ok: #16a34a;
+      --warn: #f59e0b;
+      --danger: #dc2626;
+      --plate: #ffd200;
+    }
+    body.dark {
+      --bg: #0f1420;
+      --card: #1a2131;
+      --text: #e8ecf4;
+      --muted: #94a0b8;
+      --border: #2a3346;
+      --accent: #60a5fa;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      transition: background .3s, color .3s;
+    }
+    .wrap { max-width: 1000px; margin: 0 auto; padding: 24px 16px 48px; }
+
+    header { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+    h1 { margin: 0; font-size: 28px; }
+    h1 small { display: block; font-size: 14px; color: var(--muted); font-weight: normal; margin-top: 4px; }
+    .btn {
+      border: 1px solid var(--border); background: var(--card); color: var(--text);
+      padding: 9px 14px; border-radius: 10px; cursor: pointer; font-size: 14px; font-family: inherit;
+    }
+    .btn:hover { border-color: var(--accent); }
+    .btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .btn.danger { color: var(--danger); }
+    .btn.danger:hover { background: var(--danger); color: #fff; border-color: var(--danger); }
+
+    .alert {
+      display: none; margin-top: 18px; padding: 14px 18px; border-radius: 12px;
+      background: var(--danger); color: #fff; font-weight: bold; font-size: 18px; text-align: center;
+      animation: pulse 1.2s infinite;
+    }
+    .alert.show { display: block; }
+    @keyframes pulse { 50% { opacity: .65; } }
+
+    .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-top: 20px; }
+    .stat { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 16px; }
+    .stat .label { color: var(--muted); font-size: 13px; }
+    .stat .value { font-size: 30px; font-weight: bold; margin-top: 4px; }
+
+    .bar { height: 12px; background: var(--border); border-radius: 99px; margin-top: 14px; overflow: hidden; }
+    .bar > div { height: 100%; width: 0; background: var(--ok); transition: width .4s, background .4s; }
+
+    .panel { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 18px; margin-top: 20px; }
+    .panel h2 { margin: 0 0 12px; font-size: 18px; }
+    .camera { display: flex; gap: 8px; flex-wrap: wrap; }
+    .camera input {
+      flex: 1; min-width: 160px; padding: 10px 12px; border-radius: 10px; font-size: 16px;
+      border: 1px solid var(--border); background: var(--bg); color: var(--text); font-family: inherit;
+    }
+
+    .cars { display: grid; gap: 10px; }
+    .car {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+      padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px;
+    }
+    .car.new { animation: slideIn .6s; }
+    @keyframes slideIn { from { transform: translateX(-40px); opacity: 0; } }
+    .plate {
+      direction: ltr; background: var(--plate); color: #111; font-weight: bold; font-size: 20px;
+      letter-spacing: 2px; padding: 6px 14px; border: 3px solid #111; border-radius: 6px;
+      font-family: "Courier New", monospace;
+    }
+    .plate::before { content: "IL "; font-size: 11px; color: #1d4ed8; letter-spacing: 0; }
+    .meta { color: var(--muted); font-size: 14px; }
+    .meta b { color: var(--text); }
+    .empty { text-align: center; color: var(--muted); padding: 24px; }
+
+    .toast {
+      position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(120px);
+      background: #111827; color: #fff; padding: 14px 20px; border-radius: 12px; max-width: 90%;
+      font-size: 15px; box-shadow: 0 8px 30px rgba(0,0,0,.3); transition: transform .35s;
+    }
+    .toast.show { transform: translateX(-50%) translateY(0); }
+    .footer { text-align: center; color: var(--muted); font-size: 13px; margin-top: 24px; }
+    .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--ok); margin-left: 6px; }
+    .dot.off { background: var(--danger); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>🅿️ SmartPark<small>לוח בקרה לשומר החניון – מתעדכן אוטומטית</small></h1>
+      <button class="btn" id="themeBtn">🌙 מצב לילה</button>
+    </header>
+
+    <div class="alert" id="fullAlert">🚨 החניון מלא! אין להכניס רכבים נוספים 🚨</div>
+
+    <section class="stats">
+      <div class="stat"><div class="label">רכבים בחניון</div><div class="value" id="count">–</div></div>
+      <div class="stat"><div class="label">מקומות פנויים</div><div class="value" id="free">–</div></div>
+      <div class="stat"><div class="label">סה"כ כניסות</div><div class="value" id="total">–</div></div>
+      <div class="stat"><div class="label">סה"כ הכנסות</div><div class="value" id="revenue">–</div></div>
+    </section>
+    <div class="bar"><div id="barFill"></div></div>
+
+    <section class="panel">
+      <h2>📷 סימולטור מצלמת IoT</h2>
+      <form class="camera" id="cameraForm">
+        <input id="plateInput" placeholder="מספר רישוי, למשל 12-345-67" inputmode="numeric" autocomplete="off" />
+        <button class="btn primary" type="submit">שלח למערכת</button>
+        <button class="btn" type="button" id="randomBtn">🎲 רכב אקראי</button>
+      </form>
+    </section>
+
+    <section class="panel">
+      <h2>🚗 רכבים שנמצאים כרגע בחניון</h2>
+      <div class="cars" id="cars"><div class="empty">טוען נתונים…</div></div>
+    </section>
+
+    <div class="footer"><span class="dot" id="statusDot"></span><span id="statusText">מחובר לשרת</span> · מחיר: <span id="priceInfo">–</span></div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const API = "/api/cars";          // Nginx מעביר את זה לשרת ה-API
+    const REFRESH_MS = 3000;          // כל כמה זמן לבדוק אם יש רכבים חדשים
+    let knownPlates = new Set();      // כדי לדעת איזה רכב חדש ולהנפיש אותו
+    let firstLoad = true;
+
+    const $ = (id) => document.getElementById(id);
+
+    // ---------- הודעה קופצת ----------
+    let toastTimer;
+    function toast(text) {
+      const t = $("toast");
+      t.textContent = text;
+      t.classList.add("show");
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => t.classList.remove("show"), 3500);
+    }
+
+    // ---------- תצוגה ----------
+    function formatPlate(p) {
+      // 7 ספרות: 12-345-67 | 8 ספרות: 123-45-678
+      return p.length === 7 ? `${p.slice(0,2)}-${p.slice(2,5)}-${p.slice(5)}` : `${p.slice(0,3)}-${p.slice(3,5)}-${p.slice(5)}`;
+    }
+    function formatDuration(min) {
+      if (min < 1) return "פחות מדקה";
+      const h = Math.floor(min / 60), m = min % 60;
+      return h ? `${h} ש' ${m} ד'` : `${m} דק'`;
+    }
+
+    // בונים כל כרטיס רכב עם createElement (Dynamic DOM) – ולא עם innerHTML, כדי שאי אפשר יהיה להזריק קוד
+    function carElement(car, isNew) {
+      const row = document.createElement("div");
+      row.className = "car" + (isNew ? " new" : "");
+
+      const plate = document.createElement("span");
+      plate.className = "plate";
+      plate.textContent = formatPlate(car.plate);
+
+      const meta = document.createElement("div");
+      meta.className = "meta";
+      const time = new Date(car.enteredAt).toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit" });
+      meta.append("נכנס ב-", strong(time), " · בחניון ", strong(formatDuration(car.minutes)), " · לתשלום כרגע: ", strong("₪" + car.price));
+
+      const btn = document.createElement("button");
+      btn.className = "btn danger";
+      btn.textContent = "שחרור רכב";
+      btn.onclick = () => releaseCar(car.plate);
+
+      row.append(plate, meta, btn);
+      return row;
+    }
+    function strong(text) { const b = document.createElement("b"); b.textContent = text; return b; }
+
+    function render(data) {
+      $("count").textContent = `${data.count}/${data.capacity}`;
+      $("free").textContent = data.capacity - data.count;
+      $("total").textContent = data.totalEntries;
+      $("revenue").textContent = "₪" + data.revenue;
+      $("priceInfo").textContent = `15 דק' ראשונות חינם, ₪${data.pricePerHour} לכל שעה`;
+
+      const pct = Math.round((data.count / data.capacity) * 100);
+      $("barFill").style.width = pct + "%";
+      $("barFill").style.background = pct >= 100 ? "var(--danger)" : pct >= 70 ? "var(--warn)" : "var(--ok)";
+      $("fullAlert").classList.toggle("show", data.isFull);
+
+      const list = $("cars");
+      list.replaceChildren();
+      if (data.cars.length === 0) {
+        const empty = document.createElement("div");
+        empty.className = "empty";
+        empty.textContent = "החניון ריק – זמן טוב לקפה ☕";
+        list.append(empty);
+      }
+      const current = new Set();
+      for (const car of data.cars) {
+        current.add(car.plate);
+        list.append(carElement(car, !firstLoad && !knownPlates.has(car.plate)));
+      }
+      knownPlates = current;
+      firstLoad = false;
+    }
+
+    // ---------- קריאות לשרת ----------
+    async function loadCars() {
+      try {
+        const res = await fetch(API);
+        if (!res.ok) throw new Error();
+        render(await res.json());
+        $("statusDot").classList.remove("off");
+        $("statusText").textContent = "מחובר לשרת";
+      } catch {
+        $("statusDot").classList.add("off");
+        $("statusText").textContent = "אין חיבור לשרת – מנסה שוב…";
+      }
+    }
+
+    async function sendPlate(plate) {
+      const res = await fetch(API, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ plate }),
+      });
+      const data = await res.json();
+      toast(res.ok ? `✅ ${formatPlate(data.plate)} – ${data.message}` : `⚠️ ${data.error}`);
+      loadCars();
+    }
+
+    async function releaseCar(plate) {
+      const res = await fetch(`${API}/${plate}`, { method: "DELETE" });
+      const data = await res.json();
+      if (res.ok) {
+        toast(data.price === 0
+          ? `👋 ${formatPlate(plate)} יצא – חינם! (${formatDuration(data.minutes)})`
+          : `💰 ${formatPlate(plate)} יצא – לתשלום ₪${data.price} (${formatDuration(data.minutes)})`);
+      } else {
+        toast(`⚠️ ${data.error}`);
+      }
+      loadCars();
+    }
+
+    // ---------- אירועים ----------
+    $("cameraForm").addEventListener("submit", (e) => {
+      e.preventDefault();
+      const value = $("plateInput").value.trim();
+      if (!value) return;
+      sendPlate(value);
+      $("plateInput").value = "";
+    });
+
+    $("randomBtn").addEventListener("click", () => {
+      const digits = Math.random() < 0.5 ? 7 : 8;
+      let p = String(Math.floor(Math.random() * 9) + 1);
+      while (p.length < digits) p += Math.floor(Math.random() * 10);
+      sendPlate(p);
+    });
+
+    // מצב לילה – נשמר בדפדפן
+    function setTheme(dark) {
+      document.body.classList.toggle("dark", dark);
+      $("themeBtn").textContent = dark ? "☀️ מצב יום" : "🌙 מצב לילה";
+      try { localStorage.setItem("darkMode", dark ? "1" : "0"); } catch {}
+    }
+    $("themeBtn").addEventListener("click", () => setTheme(!document.body.classList.contains("dark")));
+    try { setTheme(localStorage.getItem("darkMode") === "1"); } catch {}
+
+    // מתחילים: טעינה ראשונה + רענון אוטומטי בלי לרענן את הדף
+    loadCars();
+    setInterval(loadCars, REFRESH_MS);
+  </script>
+</body>
+</html>
