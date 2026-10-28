@@ -1,0 +1,96 @@
+# ============================================================
+#  CI/CD – רץ אוטומטית בכל push
+#  Job 1 (build-and-test): בונה את כל האימג'ים ובודק שהמערכת עובדת
+#  Job 2 (publish):        בונוס – מתייג ודוחף את האימג'ים ל-GitHub Container Registry
+# ============================================================
+name: Docker CI/CD
+
+on:
+  push:
+    branches: ["**"]       # כל push לכל branch
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Docker Build (all services)
+        run: docker compose build
+
+      - name: Start the system
+        run: docker compose up -d
+
+      - name: Wait for API to be healthy
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8080/api/health; then echo " → API is up"; exit 0; fi
+            sleep 2
+          done
+          echo "API did not start in time"; docker compose logs; exit 1
+
+      - name: Smoke test – camera POST + dashboard GET
+        run: |
+          curl -sf -X POST http://localhost:8080/api/cars \
+               -H "Content-Type: application/json" \
+               -d '{"plate":"1234567"}'
+          curl -sf http://localhost:8080/api/cars | grep -q "1234567"
+          echo "✅ Car was saved and returned by the API"
+
+      - name: Persistence test – data survives down/up
+        run: |
+          docker compose down          # בלי -v → ה-Volume נשאר
+          docker compose up -d
+          for i in $(seq 1 30); do curl -sf http://localhost:8080/api/health && break; sleep 2; done
+          curl -sf http://localhost:8080/api/cars | grep -q "1234567"
+          echo "✅ Data survived restart thanks to the Redis volume"
+
+      - name: Show logs if something failed
+        if: failure()
+        run: docker compose logs
+
+      - name: Clean up
+        if: always()
+        run: docker compose down -v
+
+  # ---------- בונוס: פרסום ל-GitHub Container Registry ----------
+  publish:
+    needs: build-and-test                 # רק אם הבדיקות עברו
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write                     # הרשאה לכתוב ל-ghcr.io
+    strategy:
+      matrix:
+        service: [api, web]               # בונים ודוחפים את שני האימג'ים שלנו
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Login to ghcr.io (secure, with GITHUB_TOKEN)
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate version tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}-${{ matrix.service }}
+          tags: |
+            type=raw,value=v1.0.${{ github.run_number }}
+            type=sha,prefix=sha-
+            type=raw,value=latest
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./${{ matrix.service }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
