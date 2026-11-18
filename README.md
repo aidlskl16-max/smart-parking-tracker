@@ -194,5 +194,5 @@ smart-parking-tracker/
 
 | שם | אחריות |
 |----|--------|
-| איידל סרבטר | _למשל: API, Redis, docker-compose_ |
+| איידל סרבטר | API, Redis, docker-compose, לוח הבקרה, GitHub Actions |
 | טל קפלן | מצגת והכנה |
