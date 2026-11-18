@@ -195,4 +195,4 @@ smart-parking-tracker/
 | שם | אחריות |
 |----|--------|
 | איידל סרבטר | _למשל: API, Redis, docker-compose_ |
-| טל קפלן | _למשל: לוח בקרה, Nginx, GitHub Actions_ |
+| טל קפלן | מצגת והכנה |
