@@ -1,61 +1,87 @@
 # ============================================================
-#  Smart Parking License Plate Tracker – Docker Compose
-#  3 שירותים:  web (Nginx)  →  api (Node.js)  →  redis (DB)
+#  Smart Parking License Plate Tracker – Docker Compose ("המנהל")
+#  קובץ אחד שמגדיר את כל 3 השירותים, איך הם מחוברים, ואיפה נשמרים הנתונים
+#  3 שירותים:  web (Nginx)  →  api (Node.js)  →  redis (מסד נתונים)
 #  הפעלה:  docker compose up -d --build
 #  כניסה:  http://localhost:8080
 # ============================================================
+
+# services = רשימת השירותים (קונטיינרים) במערכת
 services:
 
-  # ---------- שרת ה-Web: מגיש את לוח הבקרה ----------
+  # ---------- שירות 1: שרת ה-Web – מגיש את לוח הבקרה ----------
   web:
+    # בונים את האימג' מה-Dockerfile שבתיקייה web
     build: ./web
+    # שם קבוע לקונטיינר (נוח לזיהוי ב-docker ps)
     container_name: parking-web
+    # מחברים פורט: 8080 במחשב שלנו → 80 בתוך הקונטיינר
     ports:
-      - "8080:80"            # פורט 8080 במחשב → פורט 80 בקונטיינר
+      - "8080:80"
+    # מפעילים את web רק אחרי ש-api הופעל
     depends_on:
       - api
+    # מחברים לרשת הפנימית שלנו
     networks:
       - parking-net
+    # אם הקונטיינר נופל – Docker מפעיל אותו מחדש (אלא אם עצרנו אותו בעצמנו)
     restart: unless-stopped
 
-  # ---------- שרת ה-API: מקבל נתונים מהמצלמה ומחזיר ללוח הבקרה ----------
+  # ---------- שירות 2: שרת ה-API – מקבל נתונים מהמצלמה ומחזיר ללוח הבקרה ----------
   api:
+    # בונים את האימג' מה-Dockerfile שבתיקייה api
     build: ./api
     container_name: parking-api
+    # משתני סביבה – הגדרות שהקוד קורא (process.env), בלי לשנות את הקוד
     environment:
-      - REDIS_HOST=redis     # שם השירות של Redis (DNS פנימי של Docker)
-      - CAPACITY=10          # כמה מקומות חניה יש
-      - PRICE_PER_HOUR=12    # ₪ לכל שעה שהתחילה
+      # הכתובת של Redis = שם השירות שלו. Docker מתרגם "redis" לכתובת IP
+      - REDIS_HOST=redis
+      # כמה מקומות חניה יש
+      - CAPACITY=10
+      # ₪ לכל שעה שהתחילה
+      - PRICE_PER_HOUR=12
+    # מפעילים את api רק כש-Redis "בריא" (עבר את ה-healthcheck), ולא רק "עלה"
     depends_on:
       redis:
-        condition: service_healthy   # מחכים ש-Redis באמת מוכן, לא רק "עלה"
+        condition: service_healthy
     networks:
       - parking-net
     restart: unless-stopped
-    # שימו לב: אין כאן ports – ה-API לא חשוף החוצה, רק Nginx מדבר איתו (אבטחה)
+    # שימו לב: אין כאן ports! ה-API לא חשוף מחוץ ל-Docker. רק Nginx מדבר איתו (אבטחה)
 
-  # ---------- מסד הנתונים Redis ----------
+  # ---------- שירות 3: מסד הנתונים Redis ----------
   redis:
+    # לא בונים – משתמשים באימג' מוכן של Redis גרסה 7, בגרסת alpine הקטנה
     image: redis:7-alpine
     container_name: parking-redis
-    # appendonly yes = כל שינוי נכתב לקובץ בדיסק, כך שהנתונים שורדים נפילה
+    # הפקודה שמפעילה את Redis. appendonly yes = כל שינוי נכתב מיד לקובץ בדיסק
     command: ["redis-server", "--appendonly", "yes"]
+    # מחברים את התיקייה /data (שבה Redis שומר את הקובץ) ל-Volume בשם redis_data
+    # זה מה ששומר את הנתונים גם אחרי docker compose down!
     volumes:
-      - redis_data:/data     # התיקייה שבה Redis שומר את הקבצים – יושבת ב-Volume
+      - redis_data:/data
+    # בדיקת בריאות: Docker שואל את Redis "ping" כל 5 שניות. אם עונה "PONG" – הוא בריא
     healthcheck:
+      # הפקודה שבודקת
       test: ["CMD", "redis-cli", "ping"]
+      # כל כמה זמן לבדוק
       interval: 5s
+      # כמה זמן לחכות לתשובה
       timeout: 3s
+      # כמה פעמים לנסות לפני שמכריזים "לא בריא"
       retries: 5
     networks:
       - parking-net
     restart: unless-stopped
 
-# רשת Custom Bridge – השירותים מוצאים אחד את השני לפי שם
+# ---------- הרשת ----------
 networks:
+  # רשת פנימית בשם parking-net. bridge = רשת וירטואלית שבה השירותים מוצאים זה את זה לפי שם
   parking-net:
     driver: bridge
 
-# Volume בניהול Docker – לא נמחק ב-"docker compose down"
+# ---------- ה-Volume ----------
 volumes:
+  # Volume בשם redis_data, ש-Docker מנהל מחוץ לקונטיינרים.
+  # docker compose down לא מוחק אותו. רק docker compose down -v מוחק
   redis_data:
